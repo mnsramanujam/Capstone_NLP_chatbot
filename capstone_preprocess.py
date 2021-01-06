@@ -480,8 +480,11 @@ class ImputeEstimator(BaseEstimator, TransformerMixin):
            #print(X_final.shape)
             return X
 
+
 from sklearn.base import BaseEstimator,TransformerMixin
 import pandas as pd
+
+
 class ColumnsLableEncoder(BaseEstimator, TransformerMixin):
 
     def __init__(self, variables=None):
@@ -541,3 +544,299 @@ class ColumnsLableEncoder(BaseEstimator, TransformerMixin):
        ##print("###############################X.head:",X[0,:])
         return X
 
+
+
+                                    ###########################################
+                                    ##### LSTM preprocess procedures###########
+                                    ###########################################
+from sklearn.base import BaseEstimator,TransformerMixin
+import pickle
+from sklearn.decomposition import PCA
+
+class TextEstimator(BaseEstimator, TransformerMixin):
+
+    def __init__(self, variables=None):
+        pass
+    
+    def fit(self, X, y=None):
+        # we need this step to fit the sklearn pipeline
+        return self
+    
+
+    def transform(self, X):
+        X = X.copy()
+        #print("X['Description']:",X['Description'])
+        X['Cleaned_Description'] = clean_text(X,"Description")
+        X_desc=X['Cleaned_Description']
+        #print("Cleaned_Description",X_desc.head())
+        tokenizer = Tokenizer (num_words = 2000)
+        tokenizer.fit_on_texts(list(X_desc))
+        #print ("#############tokenizer.word_index",tokenizer.word_index)
+        X_desc = tokenizer.texts_to_sequences(X_desc)
+        #print("Tokenized",X_desc)
+        max_len=100
+        #print("max_len",max_len)
+        X_pad = pad_sequences(X_desc, maxlen = max_len)
+        X = pd.DataFrame(X_pad)
+        #print("X.shape **********",X.shape)
+        #print(X.head(2))
+        return X
+            
+
+
+from sklearn.base import BaseEstimator,TransformerMixin
+import pickle
+from sklearn.decomposition import PCA
+
+class OnlyImputeEstimator(BaseEstimator, TransformerMixin):
+
+    def __init__(self, variables=None):
+        pass
+    
+    def fit(self, X, y=None):
+        # we need this step to fit the sklearn pipeline
+        return self
+    
+
+    def transform(self, X):
+            X = X.copy()
+            ##print(X.info())
+            ## Lable encoder
+            industry = {'Metals':1,'Mining':2,'Others':99}
+            X['Industry'] = pd.Series([industry[x] for x in X['Industry']], index=X.index)
+
+            #print('Industry Encoded')
+            
+            risk_map = {'\nNot applicable': 99,
+            'Bees': 1,
+            'Venomous Animals': 1,
+            'Blocking and isolation of energies': 3,
+            'Burn': 3,
+            'Confined space': 3,
+            'Cut': 3,
+            'Machine Protection': 3,
+            'Manual Tools': 3,
+            'Poll': 3,
+            'Projection': 3,
+            'Projection of fragments': 3,
+            'Projection/Burning': 3,
+            'Projection/Choco': 3,
+            'Projection/Manual Tools': 3,
+            'remains of choco': 3,
+            'Suspended Loads': 3,
+            'Fall': 4,
+            'Fall prevention': 4,
+            'Fall prevention (same level)': 4,
+            'Electrical installation': 5,
+            'Electrical Shock': 5,
+            'Plates': 5,
+            'Power lock': 5,
+            'Chemical substances': 6,
+            'Liquid Metal': 7,
+            'Pressed': 8,
+            'Pressurized Systems': 8,
+            'Pressurized Systems / Chemical Substances': 8,
+            'Individual protection equipment': 9,
+            'Traffic': 10,
+            'Vehicles and Mobile Equipment': 11,
+            'Others': 99}
+
+            X['Critical Risk'] = pd.Series([risk_map[x] for x in X['Critical Risk']], index=X.index)
+
+            #print('Critical Risk Encoded')
+
+            #Y = X.copy()
+           #print("X['Description']:",X['Description'])
+            #print("pd.DatetimeIndex(X):",pd.DatetimeIndex(X[self.variables]['Data']))
+            X['Cleaned_Description'] = clean_text(X,"Description")
+            X_desc=X['Cleaned_Description']
+           #print("Cleaned_Description",X_desc.head())
+            tokenizer = Tokenizer (num_words = 100)
+            tokenizer.fit_on_texts(list(X_desc))
+            X_desc = tokenizer.texts_to_sequences(X_desc)
+            #print('Cleaned text Tokenized.')
+
+           #print("Tokenized",X_desc)
+            #max_len=max( X['cleaned_Description'].apply(lambda x: len(x.split(' '))))
+            max_len=100
+           #print("max_len",max_len)
+            X_pad = pad_sequences(X_desc, maxlen = max_len)
+            X_final = pd.DataFrame(X_pad)
+  #         #print("padded",X_pad[0,:])
+            #print(text_encoded.head())
+            #X = X[X['Critical Risk'] == 99]
+            #print(X.shape)
+            riskpred_model = 'predict_risk.pkl'
+            riskpred_model = pickle.load(open(riskpred_model, 'rb'))
+            pca=PCA(n_components=45)
+            X_processed_pca=pca.fit_transform(X_pad)
+            #print("predictions",X[0])
+           #print("predictions",X_processed_pca.shape)
+            X['predicted_risk'] = riskpred_model.predict(X_processed_pca)
+            X['predicted_risk'] = X.apply(lambda x: x['predicted_risk'] if x['Critical Risk']==99 else x['Critical Risk'], axis=1)
+            #print("new",Y.info())
+           #print(X.head())
+          # #print('predicted  risk shape1',X_pred_risk.shape)            
+            X_pred_risk = X['predicted_risk'].values
+           #print('predicted  risk values shape1',X_pred_risk.shape)             
+            #X_pred_risk = X_pred_risk.reshape(X_pred_risk.shape[0],1)
+
+            print('Risk Category imputation complete.')
+            #print('predicted  risk shape2',X_pred_risk.shape)
+            #pca=PCA(n_components=50)
+            X_processed_pca=pca.fit_transform(X_pad)
+##
+           
+            indpred_model = 'predict_industry.pkl'
+            indpred_model = pickle.load(open(indpred_model, 'rb'))
+            X['predicted_ind'] = indpred_model.predict(X_processed_pca)
+            X['predicted_ind'] = X.apply(lambda x: x['predicted_ind'] if x['Industry']==99 else x['Industry'], axis=1)
+           #print('predicted ind',X['predicted_ind'])
+            #print("new",Y.info())
+           #print(X.tail(20))
+            X_pred_ind = X['predicted_ind'].values
+            #X_pred_ind = X_pred_ind.reshape(X_pred_ind.shape[0],1)
+
+            #print('Industry imputation complete.')
+
+           #print('predicted shape',X_pred_ind.shape)
+           ##print('padded X_pad',X_pad.type())
+            X_final=pd.DataFrame()
+            #print('X_pred_risk shape',X_pred_risk.shape)
+            #print('X_pred_ind shape',X_pred_ind.shape)
+            X_final['pred_risk'] = X_pred_risk
+            X_final['pred_ind'] = X_pred_ind
+            X = X_final
+           #print(X_final.shape)
+            return X
+
+
+
+from sklearn.base import BaseEstimator,TransformerMixin
+import pickle
+from sklearn.decomposition import PCA
+
+class LstmModelPredictions(BaseEstimator, TransformerMixin):
+
+    def __init__(self, variables=None):
+        pass
+    
+    def fit(self, X, y=None):
+        # we need this step to fit the sklearn pipeline
+        return self
+    
+
+    def transform(self, X):
+        X = X.copy()
+        #print("X['Description']:",X['Description'])
+        X['Cleaned_Description'] = clean_text(X,"Description")
+        X_desc=X['Cleaned_Description']
+        #print("Cleaned_Description",X_desc.head())
+        tokenizer = Tokenizer (num_words = 2000)
+        tokenizer.fit_on_texts(list(X_desc))
+        #print ("#############tokenizer.word_index",tokenizer.word_index)
+        X_desc = tokenizer.texts_to_sequences(X_desc)
+        #print("Tokenized",X_desc)
+        max_len=100
+        #print("max_len",max_len)
+        X_pad = pad_sequences(X_desc, maxlen = max_len)
+        #Import the lstm pred model
+        from keras.models import model_from_json
+        json_file = open('lstm_pred_model.json', 'r')
+        loaded_lstm_pred_model_json = json_file.read()
+        json_file.close()
+        loaded_lstm_pred_model = model_from_json(loaded_lstm_pred_model_json)
+        # load weights into new lstm_pred_model
+        loaded_lstm_pred_model.load_weights("lstm_pred_model.h5")
+        print("Loaded lstm_pred_model from disk")
+        lstm_predictions = loaded_lstm_pred_model.predict(X_pad)
+        X = pd.DataFrame(lstm_predictions)
+        #print("X.shape **********",X.shape)
+        #print(X.head(2))
+        return X
+
+
+from sklearn.base import BaseEstimator,TransformerMixin
+import pandas as pd
+class ColumnsLabelEncoder(BaseEstimator, TransformerMixin):
+      
+    def __init__(self, variables=None):
+        
+        if not isinstance(variables, list):
+            self.variables = [variables]
+        else:
+            self.variables = variables
+
+    def fit(self, X, y=None):
+        # we need this step to fit the sklearn pipeline
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+       
+        country = {'Country_01':1,'Country_02':2,'Country_03':3}
+      
+        local = { 'Local_01': 1,
+                  'Local_02': 2,
+                  'Local_03': 3,
+                  'Local_04': 4,
+                  'Local_05': 5,
+                  'Local_06': 6,
+                  'Local_07': 7,
+                  'Local_08': 8,
+                  'Local_09': 9,
+                  'Local_10': 10,
+                  'Local_11': 11,
+                  'Local_12': 12 }
+
+        emp = {
+                  'Third Party': 1,
+                  'Employee': 2,
+                  'Third Party (Remote)': 3
+        }
+        
+        risk_grade = {'I':1,'II':2,'III':3,'IV':4,'V':5,'VI':6}        
+        
+
+        X['Countries'] = pd.Series([country[x] for x in X['Countries']], index=X.index)
+        #print('Countries Encoded')
+
+        X['Local'] = pd.Series([local[x] for x in X['Local']], index=X.index)
+        #print('Local Encoded')
+
+        X['Emp_Type'] = pd.Series([emp[x] for x in X['Emp_Type']], index=X.index)
+        #print('Emp_type Encoded')
+
+        X['Potential_Accident'] = pd.Series([risk_grade[x] for x in data['Potential_Accident']], index=data.index)
+        #print('Potential Accident Encoded')
+
+       # X['Gender'] = pd.Series([country[x] for x in X['Gender']], index=X.index)
+      #  X=X.loc[:,enc_attribs]
+       #print("enc Dateframe chk",X.head())
+       #print("###############################X.shape:",X.shape)
+       ##print("###############################X.head:",X[0,:])
+        return X
+
+            
+     
+from sklearn.base import BaseEstimator,TransformerMixin
+import pickle
+from sklearn.decomposition import PCA
+
+class FinalModelPredictions(BaseEstimator, TransformerMixin):
+
+    def __init__(self, variables=None):
+        pass
+    
+    def fit(self, X, y=None):
+        # we need this step to fit the sklearn pipeline
+        return self
+    
+
+    def transform(self, X):
+            X = X.copy()
+            lstm_pred_model = pickle.load(open('lstm_xgb_lstm_full_model.pkl', 'rb'))
+            lstm_pred = lstm_pred_model.predict(X)  
+            X = pd.DataFrame(lstm_pred)
+            print("lstm_pred.shape **********",X.shape)
+            return X     
