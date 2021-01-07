@@ -807,7 +807,7 @@ class ColumnsLabelEncoder(BaseEstimator, TransformerMixin):
         X['Emp_Type'] = pd.Series([emp[x] for x in X['Emp_Type']], index=X.index)
         #print('Emp_type Encoded')
 
-        X['Potential_Accident'] = pd.Series([risk_grade[x] for x in data['Potential_Accident']], index=data.index)
+        X['Potential_Accident'] = pd.Series([risk_grade[x] for x in X['Potential_Accident']], index=X.index)
         #print('Potential Accident Encoded')
 
        # X['Gender'] = pd.Series([country[x] for x in X['Gender']], index=X.index)
